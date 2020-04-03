@@ -55,12 +55,14 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
   private val SERIALIZATION_BUFFER_SIZE =
             SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
 
+  private val serializer = dep.serializer
+
   //we will pool the kryo instance and ByteBuffer instance later.
   private val threadLocalShuffleResource = getThreadLocalShuffleResource()
   //per shuffle task
   private val reduceShuffleStore =
                shuffleStoreMgr.createReduceShuffleStore(
-                    threadLocalShuffleResource.getSerializationResource().getKryoInstance(),
+                    serializer.asInstanceOf[KryoSerializer].newKryo,
                     threadLocalShuffleResource.getSerializationResource().getByteBuffer(),
                     shuffleId, reduceId, numReducePartitions,
                     ordering, aggregation)
@@ -75,7 +77,6 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
       var shuffleResource = resourceHolder.getResource()
 
       if (shuffleResource == null) {
-        val kryoInstance =  new KryoSerializer(SparkEnv.get.conf).newKryo(); //per-thread
         val serializationBuffer = ByteBuffer.allocateDirect(SERIALIZATION_BUFFER_SIZE)
         if (serializationBuffer.capacity() != SERIALIZATION_BUFFER_SIZE ) {
           logError("Reduce Thread: " + Thread.currentThread().getId
@@ -91,7 +92,7 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
         //add a logical thread id
         val logicalThreadId = ShuffleStoreManager.INSTANCE.getlogicalThreadCounter ()
         shuffleResource = new ShuffleResource(
-          new ReusableSerializationResource (kryoInstance, serializationBuffer),
+          new ReusableSerializationResource(serializationBuffer),
           logicalThreadId)
 
         resourceHolder.initialize (shuffleResource)

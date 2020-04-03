@@ -26,8 +26,6 @@ import org.apache.spark.{SharedMemoryMapStatus, TaskContext, SparkEnv}
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.storage.BlockManagerId
 
-import com.esotericsoftware.kryo.io.ByteBufferOutput;
-
 import com.hp.hpl.firesteel.shuffle._
 import com.hp.hpl.firesteel.shuffle.ThreadLocalShuffleResourceHolder._
 
@@ -65,6 +63,8 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
   private val SERIALIZATION_BUFFER_SIZE = 
             SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
 
+  private val serializer = dep.serializer
+
   //we batch 5000 records before we go to the write.This can be configurable later.
   private val SHUFFLE_STORE_BATCH_SERIALIZATION_SIZE = 2000
   //we will pool the kryo instance and ByteBuffer instance later.
@@ -94,7 +94,6 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
    
        if (shuffleResource == null) {
           //still at the early thread launching phase for the executor, so create new resource
-          val kryoInstance =  new KryoSerializer(SparkEnv.get.conf).newKryo(); //per-thread
           val serializationBuffer = ByteBuffer.allocateDirect(SERIALIZATION_BUFFER_SIZE)
           if (serializationBuffer.capacity() != SERIALIZATION_BUFFER_SIZE ) {
             logError(" Map Thread: " + Thread.currentThread().getId
@@ -110,7 +109,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
           //add a logical thread id
           val logicalThreadId = ShuffleStoreManager.INSTANCE.getlogicalThreadCounter ()
           shuffleResource = new ShuffleResource(
-              new ReusableSerializationResource (kryoInstance, serializationBuffer),
+              new ReusableSerializationResource(serializationBuffer),
               logicalThreadId)
           
           resourceHolder.initialize (shuffleResource)
@@ -128,7 +127,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case intValue: Int => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Int
           shuffleStoreMgr.createMapShuffleStore(
-            serializationResource.getKryoInstance(),
+            serializer.asInstanceOf[KryoSerializer].newKryo,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -138,7 +137,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case longValue: Long => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Long
           shuffleStoreMgr.createMapShuffleStore(
-            serializationResource.getKryoInstance(),
+            serializer.asInstanceOf[KryoSerializer].newKryo,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -148,7 +147,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case floatValue: Float => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Float
           shuffleStoreMgr.createMapShuffleStore(
-            serializationResource.getKryoInstance(),
+            serializer.asInstanceOf[KryoSerializer].newKryo,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -158,7 +157,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case byteArrayValue: Array[Byte] => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.ByteArray
           shuffleStoreMgr.createMapShuffleStore(
-            serializationResource.getKryoInstance(),
+            serializer.asInstanceOf[KryoSerializer].newKryo,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -168,7 +167,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case _ =>  {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Object
           shuffleStoreMgr.createMapShuffleStore(
-            serializationResource.getKryoInstance(),
+            serializer.asInstanceOf[KryoSerializer].newKryo,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -271,32 +270,32 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
     val resource =
       threadLocalShuffleResource.getSerializationResource
 
-    val kryo = resource.getKryoInstance
-    val output = new ByteBufferOutput(resource.getByteBuffer)
+    val serializerInstance = serializer.newInstance
+    val directBuffer = resource.getByteBuffer // DirectBuffer.
 
     // empty the buffer that may contain previous serialized records.
-    output.clear
+    directBuffer.clear
 
     var partitionLengths = new Array[Int](numberOfPartitions)
     for (id <- partitionedBuffer.keySet.toSeq.sorted) {
-      var firstPos = output.getByteBuffer.position
+      var firstPos = directBuffer.position
 
       var it = partitionedBuffer(id).iterator
       while (it.hasNext) {
         var key = it.next
         var value = it.next
-        kryo.writeClassAndObject(output, key)
-        kryo.writeClassAndObject(output, value)
+        directBuffer.put(serializerInstance.serialize(key))
+        directBuffer.put(serializerInstance.serialize(value))
       }
 
-      partitionLengths(id) = output.getByteBuffer.position - firstPos
+      partitionLengths(id) = directBuffer.position - firstPos
     }
 
-    val res = mapShuffleStore.writeToHeap(output.getByteBuffer, partitionLengths)
+    val mapStatus = mapShuffleStore.writeToHeap(directBuffer, partitionLengths)
 
-    output.clear
+    directBuffer.clear
 
-    return res
+    return mapStatus
   }
 
   /**
