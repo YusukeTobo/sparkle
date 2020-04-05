@@ -58,57 +58,24 @@ public class SimulatedMapSHMShuffleStore  implements MapShuffleStore {
 
     }
 
-   
     @Override
     public ShuffleDataModel.MapStatus sortAndStore() {
       return null;
     }
 
     @Override
-    public ShuffleDataModel.KValueTypeId getKValueTypeId() {
+    public int getStoreId() {
+        return 0;
+    }
+
+    @Override
+    public void serializeKVPair(Object kvalue, Object vvalue, int partitionId,
+                                int indexPosition, int scode) {
         throw new UnsupportedOperationException("not yet implemented.");
     }
 
-
     @Override
-    public void setKValueTypeId(ShuffleDataModel.KValueTypeId ktypeId) {
-
+    public void storeKVPairs(int numberOfPairs, int scode) {
+        throw new UnsupportedOperationException("not yet implemented.");
     }
-
-    @Override
-    public void storeVValueType(Object Vvalue) {
-
-    }
-
-    @Override
-    public void storeKVTypes (Object Kvalue, Object Vvalue){
-
-    }
-
-    @Override
-    public byte[] getKValueType() {
-        return null;
-    }
-
-    @Override
-    public  byte[] getVValueType() {
-        return null;
-    }
-
-    @Override
-    public int getStoreId() {
-    	return 0; 
-    }
-
-	@Override
-	public void serializeKVPair(Object kvalue, Object vvalue, int partitionId,
-			int indexPosition, int scode) {
-		 throw new UnsupportedOperationException("not yet implemented.");
-	}
-
-	@Override
-	public void storeKVPairs(int numberOfPairs, int scode) {
-		 throw new UnsupportedOperationException("not yet implemented.");
-		
-	}
 }

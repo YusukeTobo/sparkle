@@ -19,15 +19,15 @@ package com.hp.hpl.firesteel.shuffle;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.ArrayList;
-
-import com.esotericsoftware.kryo.Kryo;
-
 import java.nio.ByteBuffer;
 import java.io.IOException;
 
+import org.apache.spark.serializer.Serializer;
+
+import com.esotericsoftware.kryo.Kryo;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
- 
 
 /**
  * Per executor process resource management (for example, allocate big chunk of global memory
@@ -207,27 +207,27 @@ public class ShuffleStoreManager {
     }
     
     private native void nregistershm (long ptrToShuffleManager);
-    
+
     /**
-     * byteBuffer is used only at the Java side for data serialization, and then use the same buffer to pass to
-     * C++ shuffle engine. 
+     * ByteBuffer is used to pass serialized data to C++ shuffle engine.
      */
-    public MapSHMShuffleStore createMapShuffleStore(Kryo kryo, ByteBuffer byteBuffer, int logicalThreadId,
+    public MapSHMShuffleStore createMapShuffleStore(Serializer serializer, ByteBuffer byteBuffer, int logicalThreadId,
                                                     int shuffleId, int mapId, int numberOfPartitions,
                                                     ShuffleDataModel.KValueTypeId keyType,
                                                     int sizeOfBatchSerialization,
                                                     boolean ordering) {
-        MapSHMShuffleStore mapShuffleStore= new MapSHMShuffleStore(kryo, byteBuffer, this);
+        MapSHMShuffleStore mapShuffleStore =
+            new MapSHMShuffleStore(serializer, byteBuffer, this);
         mapShuffleStore.initialize(shuffleId, mapId, numberOfPartitions, keyType, sizeOfBatchSerialization, ordering);
         //Note: only map store needs to be tracked for NVM related ersource management
-        this.shuffleStoreTracker.addMapShuffleStore(shuffleId, logicalThreadId, mapShuffleStore); 
+        this.shuffleStoreTracker.addMapShuffleStore(shuffleId, logicalThreadId, mapShuffleStore);
         return mapShuffleStore;
     }
 
 
     /**
      *byteBuffer is used only at the Java side for data de-desrialization, the same buffer is passed to C++ shuffle
-     *engine side to hold the data that is to be de-serialized at the Java side. 
+     *engine side to hold the data that is to be de-serialized at the Java side.
      *
      */
     public ReduceSHMShuffleStore createReduceShuffleStore(Kryo kryo, ByteBuffer byteBuffer,

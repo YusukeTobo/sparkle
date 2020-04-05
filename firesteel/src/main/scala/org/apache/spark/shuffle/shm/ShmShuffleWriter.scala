@@ -14,7 +14,6 @@
  * limitations under the License.
  *
  */
-
 package org.apache.spark.shuffle.shm
 
 import org.apache.spark.internal.Logging
@@ -23,10 +22,13 @@ import org.apache.spark.shuffle._
 
 import org.apache.spark.{SharedMemoryMapStatus, TaskContext, SparkEnv}
 
-import org.apache.spark.serializer.KryoSerializer
+import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.BlockManagerId
 
-import com.hp.hpl.firesteel.shuffle._
+import com.hp.hpl.firesteel.shuffle.ShuffleStoreManager
+import com.hp.hpl.firesteel.shuffle.MapSHMShuffleStore
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel
+import com.hp.hpl.firesteel.shuffle.ThreadLocalShuffleResourceHolder
 import com.hp.hpl.firesteel.shuffle.ThreadLocalShuffleResourceHolder._
 
 import java.util.Comparator
@@ -38,13 +40,13 @@ import scala.collection.mutable.Buffer
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * Shuffle writer designed for shared-memory based access.
- */
+  * Shuffle writer designed for shared-memory based access.
+  */
 private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager,
-                                             handle: BaseShuffleHandle[K, V, _],
-                                             mapId: Int,
-                                             context: TaskContext)
-  extends ShuffleWriter[K, V] with Logging {
+  handle: BaseShuffleHandle[K, V, _],
+  mapId: Int,
+  context: TaskContext)
+    extends ShuffleWriter[K, V] with Logging {
 
   //to mimic what is in SortShuffleWriter
   private var stopping = false
@@ -56,16 +58,16 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
   private val numOutputSplits = dep.partitioner.numPartitions
 
   private val shuffleId=handle.shuffleId
-  private val numberOfPartitions=handle.dependency.partitioner.numPartitions
+  private val numberOfPartitions = dep.partitioner.numPartitions
 
   //we will introduce a Spark configuraton parameter for this one. and serialziation and
   //deserialization buffers should be the same size, as we need to support thread re-use.
-  private val SERIALIZATION_BUFFER_SIZE = 
-            SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
+  private val SERIALIZATION_BUFFER_SIZE =
+    SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
 
   private val serializer = dep.serializer
 
-  //we batch 5000 records before we go to the write.This can be configurable later.
+  //we batch 2000 records before we go to the write.This can be configurable later.
   private val SHUFFLE_STORE_BATCH_SERIALIZATION_SIZE = 2000
   //we will pool the kryo instance and ByteBuffer instance later.
 
@@ -88,46 +90,46 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
   private var kvalueTypeId = ShuffleDataModel.KValueTypeId.Unknown
 
   private def getThreadLocalShuffleResource():
-                            ThreadLocalShuffleResourceHolder.ShuffleResource = {
-       val resourceHolder= new ThreadLocalShuffleResourceHolder()
-       var shuffleResource = resourceHolder.getResource()
-   
-       if (shuffleResource == null) {
-          //still at the early thread launching phase for the executor, so create new resource
-          val serializationBuffer = ByteBuffer.allocateDirect(SERIALIZATION_BUFFER_SIZE)
-          if (serializationBuffer.capacity() != SERIALIZATION_BUFFER_SIZE ) {
-            logError(" Map Thread: " + Thread.currentThread().getId
-              + " created serialization buffer with size: "
-              + serializationBuffer.capacity()
-              + ": FAILED to match: " + SERIALIZATION_BUFFER_SIZE)
-          }
-          else {
-            logInfo(" Map Thread: " +  Thread.currentThread().getId
-              + " created the serialization buffer with size: "
-              + SERIALIZATION_BUFFER_SIZE + ": SUCCESS")
-          }
-          //add a logical thread id
-          val logicalThreadId = ShuffleStoreManager.INSTANCE.getlogicalThreadCounter ()
-          shuffleResource = new ShuffleResource(
-              new ReusableSerializationResource(serializationBuffer),
-              logicalThreadId)
-          
-          resourceHolder.initialize (shuffleResource)
+      ThreadLocalShuffleResourceHolder.ShuffleResource = {
+    val resourceHolder= new ThreadLocalShuffleResourceHolder()
+    var shuffleResource = resourceHolder.getResource()
 
-       }
+    if (shuffleResource == null) {
+      //still at the early thread launching phase for the executor, so create new resource
+      val serializationBuffer = ByteBuffer.allocateDirect(SERIALIZATION_BUFFER_SIZE)
+      if (serializationBuffer.capacity() != SERIALIZATION_BUFFER_SIZE ) {
+        logError(" Map Thread: " + Thread.currentThread().getId
+          + " created serialization buffer with size: "
+          + serializationBuffer.capacity()
+          + ": FAILED to match: " + SERIALIZATION_BUFFER_SIZE)
+      }
+      else {
+        logInfo(" Map Thread: " +  Thread.currentThread().getId
+          + " created the serialization buffer with size: "
+          + SERIALIZATION_BUFFER_SIZE + ": SUCCESS")
+      }
+      //add a logical thread id
+      val logicalThreadId =
+        ShuffleStoreManager.INSTANCE.getlogicalThreadCounter()
+      shuffleResource = new ShuffleResource(
+        new ReusableSerializationResource(serializationBuffer),
+        logicalThreadId)
+      resourceHolder.initialize(shuffleResource)
+    }
 
-       shuffleResource
+    shuffleResource
   }
 
   private def createMapShuffleStore[K](firstK: K): MapSHMShuffleStore ={
-    val serializationResource = threadLocalShuffleResource.getSerializationResource()
+    val serializationResource =
+      threadLocalShuffleResource.getSerializationResource()
 
     mapShuffleStore = {
       firstK match {
         case intValue: Int => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Int
           shuffleStoreMgr.createMapShuffleStore(
-            serializer.asInstanceOf[KryoSerializer].newKryo,
+            serializer,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -137,7 +139,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case longValue: Long => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Long
           shuffleStoreMgr.createMapShuffleStore(
-            serializer.asInstanceOf[KryoSerializer].newKryo,
+            serializer,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -147,7 +149,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case floatValue: Float => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Float
           shuffleStoreMgr.createMapShuffleStore(
-            serializer.asInstanceOf[KryoSerializer].newKryo,
+            serializer,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -157,7 +159,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case byteArrayValue: Array[Byte] => {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.ByteArray
           shuffleStoreMgr.createMapShuffleStore(
-            serializer.asInstanceOf[KryoSerializer].newKryo,
+            serializer,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -167,7 +169,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         case _ =>  {
           kvalueTypeId = ShuffleDataModel.KValueTypeId.Object
           shuffleStoreMgr.createMapShuffleStore(
-            serializer.asInstanceOf[KryoSerializer].newKryo,
+            serializer,
             serializationResource.getByteBuffer(),
             threadLocalShuffleResource.getLogicalThreadId,
             shuffleId, mapId,numberOfPartitions,
@@ -206,7 +208,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
 
       while (bit.hasNext) {
         kv = bit.next()
-        val partitionId = handle.dependency.partitioner.getPartition(kv._1)
+        val partitionId = dep.partitioner.getPartition(kv._1)
 
         //NOTE: we will need to check whether overloading method works in this case.
         //NOTE: Obj && no jni callbacks -> just store in buffer.
@@ -235,10 +237,10 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
     }
     else {
       val firstKV = (0, 0) //make it an integer.
-      //NOTE: such that map shuffle store is created with an integer key type. but the C++ engine
-      //that pick up the type should not use the channel (bucket) that has zero size bucket to
-      //determine the type.
-      mapShuffleStore = createMapShuffleStore(firstKV._1)
+                           //NOTE: such that map shuffle store is created with an integer key type. but the C++ engine
+                           //that pick up the type should not use the channel (bucket) that has zero size bucket to
+                           //determine the type.
+        mapShuffleStore = createMapShuffleStore(firstKV._1)
     }
 
     //when done, issue sort and store and get the map status information
@@ -248,10 +250,10 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
     writeMetrics.incWriteTime(mapStatusResult.getWrittenTimeNs)
 
     logInfo( "store id" + mapShuffleStore.getStoreId
-         + " shm-shuffle map status region id: " + mapStatusResult.getRegionIdOfIndexBucket())
+      + " shm-shuffle map status region id: " + mapStatusResult.getRegionIdOfIndexBucket())
     logInfo("store id" + mapShuffleStore.getStoreId
-         + " shm-shuffle map status offset to index chunk: 0x "
-                      + java.lang.Long.toHexString(mapStatusResult.getOffsetOfIndexBucket()))
+      + " shm-shuffle map status offset to index chunk: 0x "
+      + java.lang.Long.toHexString(mapStatusResult.getOffsetOfIndexBucket()))
     val blockManagerId = blockManager.shuffleServerId
 
     val partitionLengths= mapStatusResult.getMapStatus ()
@@ -299,37 +301,37 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
   }
 
   /**
-   * stop will force the completion of the shuffle write and return
-   * MapStatus information.
-   *
-   * We will produce MapStatus information exactly like what is today, as otherwise, we will have
-   * to change MapOutputTracker logic and corresponding data structures to do so.
-   *
-   * @param success when we get here, we already know that we can stop it with success or not.
-   * @return record map shuffle status information that will be sent to the job scheduler
-   */
+    * stop will force the completion of the shuffle write and return
+    * MapStatus information.
+    *
+    * We will produce MapStatus information exactly like what is today, as otherwise, we will have
+    * to change MapOutputTracker logic and corresponding data structures to do so.
+    *
+    * @param success when we get here, we already know that we can stop it with success or not.
+    * @return record map shuffle status information that will be sent to the job scheduler
+    */
   override def stop(success: Boolean): Option[MapStatus]= {
-      try {
-        if (stopping) {
-          return None
-        }
-        stopping = true
-        if (success) {
-          return Option (mapStatus)
-        }
-        else {
-          //TODO: we will need to remove the NVM data produced by this failed Map task.
-          return None
-        }
-      }finally {
-        //In sort-based shuffle, current sort shuffle writer stop the sorter, which is to clean up
-        //the intermediate files
-        //For shm-based shuffle, to shutdown the shuffle store for this map task (basically to
-        // clean up the occupied DRAM based resource. but not NVM-based resource, which will be
-        // cleaned up during unregister the shuffle.)
-        val startTime = System.nanoTime
-        mapShuffleStore.stop();
-        writeMetrics.incWriteTime(System.nanoTime - startTime)
+    try {
+      if (stopping) {
+        return None
       }
+      stopping = true
+      if (success) {
+        return Option (mapStatus)
+      }
+      else {
+        //TODO: we will need to remove the NVM data produced by this failed Map task.
+        return None
+      }
+    }finally {
+      //In sort-based shuffle, current sort shuffle writer stop the sorter, which is to clean up
+      //the intermediate files
+      //For shm-based shuffle, to shutdown the shuffle store for this map task (basically to
+      // clean up the occupied DRAM based resource. but not NVM-based resource, which will be
+      // cleaned up during unregister the shuffle.)
+      val startTime = System.nanoTime
+      mapShuffleStore.stop();
+      writeMetrics.incWriteTime(System.nanoTime - startTime)
+    }
   }
 }

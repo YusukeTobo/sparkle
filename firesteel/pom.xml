@@ -178,6 +178,7 @@ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/ma
         <compilerArgs>
           <!-- This option is needed to suppress warnings from sun.misc.Unsafe usage -->
           <arg>-XDignore.symbol.file</arg>
+          <arg>-Xlint:deprecation</arg>
         </compilerArgs>
       </configuration>
     </plugin>

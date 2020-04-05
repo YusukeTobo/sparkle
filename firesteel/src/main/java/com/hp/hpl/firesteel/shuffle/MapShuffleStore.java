@@ -84,47 +84,9 @@ public interface MapShuffleStore {
          ShuffleDataModel.MapStatus sortAndStore();
 
         /**
-        * to query what is the K value type used in this shuffle store
-        * @return the K value type used for this shuffle operation.
-        */
-        ShuffleDataModel.KValueTypeId getKValueTypeId();
-
-       /**
-        * to set the K value type used in this shuffle store
-        * @param ktype
-        */
-        void setKValueTypeId(ShuffleDataModel.KValueTypeId ktype);
-
-
-         /**
-          * based on a given particular V value, to store its value type.
-          * @param Vvalue
-          */
-        void storeVValueType(Object Vvalue);
-
-         /**
-          * based on a given particular object based (K,V) pair, to store the corresponding types.
-          * @param Kvalue
-          * @param VValue
-          */
-        void storeKVTypes (Object Kvalue, Object VValue);
-
-        /**
-         * to support when K value type is an arbitrary object type. to retrieve the serialized
-         * type information for K values that can be de-serialized by Java/Scala
-        */
-        byte[] getKValueType();
-
-         /**
-          * to retrieve the serialized type information for the V values that can be
-          * de-serialized by Java/Scala
-          */
-        byte[] getVValueType();
-        
-        /**
-         * retrieve the unique store id. 
+         * retrieve the unique store id.
          * @return
          */
-        int getStoreId(); 
+        int getStoreId();
 
 }

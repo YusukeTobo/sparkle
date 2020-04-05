@@ -53,7 +53,7 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
   //we will introduce a Spark configuraton parameter for this one. and serialziation and
   //deserialization buffers should be the same size, as we need to support thread re-use.
   private val SERIALIZATION_BUFFER_SIZE =
-            SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
+    SparkEnv.get.conf.getInt("spark.shuffle.shm.serializer.buffer.max.mb", 10)*1024*1024
 
   private val serializer = dep.serializer
 
@@ -71,7 +71,7 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
   //this one is different, as when the Reducer starts. Normally when all of the required logical
   //threads should be launched already.
   private def getThreadLocalShuffleResource():
-                                            ThreadLocalShuffleResourceHolder.ShuffleResource = {
+      ThreadLocalShuffleResourceHolder.ShuffleResource = {
 
       val resourceHolder= new ThreadLocalShuffleResourceHolder()
       var shuffleResource = resourceHolder.getResource()
