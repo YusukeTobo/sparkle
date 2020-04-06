@@ -28,6 +28,9 @@ import org.apache.spark.serializer.SerializerInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.MapStatus;
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.KValueTypeId;
+
 /**
  * to implement the Mapside Shuffle Store. We will use the Kryo serializer to do internal
  * object serialization/de-serialization
@@ -43,8 +46,6 @@ public class MapSHMShuffleStore implements MapShuffleStore {
 
     private static AtomicInteger storeCounter = new AtomicInteger(0);
     private int storeId;
-    //serializer creates serialization instance. for a long lived executor, the thread pool can
-    //reuse per-thread serialization instance
 
     /**
      * @param serializer serializer for kv pairs.
@@ -67,7 +68,7 @@ public class MapSHMShuffleStore implements MapShuffleStore {
     private int shuffleId=0;
     private int mapTaskId = 0;
     private int numberOfPartitions =0;
-    private ShuffleDataModel.KValueTypeId keyType;
+    private KValueTypeId keyType = KValueTypeId.Unknown;
 
     //record the size of the pre-defined batch serialization size
     private int sizeOfBatchSerialization=0;
@@ -75,7 +76,6 @@ public class MapSHMShuffleStore implements MapShuffleStore {
     //the following two sets of array declaration is such that in one map shuffle whole duration,
     //we can pre-allocate the data structure required once, and then keep re-use for each iteration of
     //store key/value pairs to C++ shuffle engine
-    private int koffsets[] = null;
     private int voffsets[]  =null;
     private int npartitions[] = null;
 
@@ -109,8 +109,8 @@ public class MapSHMShuffleStore implements MapShuffleStore {
      */
      @Override
      public void initialize(int shuffleId, int mapTaskId, int numberOfPartitions,
-                                 ShuffleDataModel.KValueTypeId keyType, int batchSerialization,
-                                 boolean ordering){
+                            KValueTypeId keyType, int batchSerialization,
+                            boolean ordering){
 
          LOG.info("store id" + this.storeId
                   + " map-side shared-memory based shuffle store started"
@@ -123,23 +123,22 @@ public class MapSHMShuffleStore implements MapShuffleStore {
          this.sizeOfBatchSerialization =  batchSerialization;
          this.ordering = ordering;
 
-         this.koffsets = new int[this.sizeOfBatchSerialization];
          this.voffsets = new int[this.sizeOfBatchSerialization];
          this.npartitions = new int[this.sizeOfBatchSerialization];
 
-         if (keyType == ShuffleDataModel.KValueTypeId.Int) {
+         if (keyType == KValueTypeId.Int) {
              this.nkvalues = new int[this.sizeOfBatchSerialization];
          }
-         else if (keyType == ShuffleDataModel.KValueTypeId.Float) {
+         else if (keyType == KValueTypeId.Float) {
             this.fkvalues = new float [this.sizeOfBatchSerialization];
          }
-         else if (keyType == ShuffleDataModel.KValueTypeId.Long) {
+         else if (keyType == KValueTypeId.Long) {
              this.lkvalues = new long [this.sizeOfBatchSerialization];
          }
-         else if (keyType == ShuffleDataModel.KValueTypeId.Double) {
+         else if (keyType == KValueTypeId.Double) {
              this.lkvalues = new long [this.sizeOfBatchSerialization];
          }
-         else if (keyType == ShuffleDataModel.KValueTypeId.Object){
+         else if (keyType == KValueTypeId.Object){
              this.okvalues = new Object[this.sizeOfBatchSerialization];
              this.okhashes = new int[this.sizeOfBatchSerialization];
          }
@@ -197,59 +196,30 @@ public class MapSHMShuffleStore implements MapShuffleStore {
 
     private native void nshutdown(long ptrToStore);
 
-    protected  void serializeVInt (int kvalue, Object vvalue, int partitionId, int indexPosition) {
-        this.nkvalues[indexPosition] = kvalue;
-        this.npartitions[indexPosition] = partitionId;
-        final ClassTag classTag = ClassTag$.MODULE$.apply(Object.class);
-        this.byteBuffer.put(this.serializer.serialize(vvalue, classTag));
-        this.voffsets[indexPosition]= this.byteBuffer.position();
-    }
-    protected void serializeVFloat (float kvalue, Object vvalue, int partitionId, int indexPosition) {
-        this.fkvalues[indexPosition] = kvalue;
-        this.npartitions[indexPosition] = partitionId;
-        final ClassTag classTag = ClassTag$.MODULE$.apply(Object.class);
-        this.byteBuffer.put(this.serializer.serialize(vvalue, classTag));
-        this.voffsets[indexPosition]= this.byteBuffer.position();
-    }
-    protected void serializeVLong (long kvalue, Object vvalue, int partitionId, int indexPosition) {
-        this.lkvalues[indexPosition] = kvalue;
-        this.npartitions[indexPosition] = partitionId;
-        final ClassTag classTag = ClassTag$.MODULE$.apply(Object.class);
-        this.byteBuffer.put(this.serializer.serialize(vvalue, classTag));
-        this.voffsets[indexPosition]= this.byteBuffer.position();
-    }
-    protected void serializeVDouble (double kvalue, Object vvalue, int partitionId, int indexPosition) {
-        throw new RuntimeException ("serialize V for double value is not implemented");
-    }
-    public void serializeVObject (Object kvalue, Object vvalue, int partitionId, int indexPosition) {
-        this.okvalues[indexPosition] = kvalue;
-        this.okhashes[indexPosition] = kvalue.hashCode();
+    @Override
+    public void serializeKVPair(Object kvalue, Object vvalue, int partitionId, int indexPosition, int scode) {
         this.npartitions[indexPosition] = partitionId;
 
         // TODO: explain why classTag required.
         final ClassTag classTag = ClassTag$.MODULE$.apply(Object.class);
         this.byteBuffer.put(this.serializer.serialize(vvalue, classTag));
         this.voffsets[indexPosition]= this.byteBuffer.position();
-    }
 
-    @Override
-    public void serializeKVPair(Object kvalue, Object vvalue, int partitionId, int indexPosition, int scode) {
-        //rely on Java to generate fast switch statement.
-        switch (scode) {
-        case 0:
-            serializeVInt (((Integer)kvalue).intValue(), vvalue, partitionId,  indexPosition);
+        switch (keyType) {
+        case Int:
+            this.nkvalues[indexPosition] = ((Integer)kvalue).intValue();
             break;
-        case 1:
-            serializeVLong (((Long)kvalue).longValue(), vvalue, partitionId,  indexPosition);
+        case Long:
+            this.lkvalues[indexPosition] = ((Long)kvalue).longValue();
             break;
-        case 2:
-            serializeVFloat (((Float)kvalue).floatValue(), vvalue,  partitionId,  indexPosition);
+        case Float:
+            this.fkvalues[indexPosition] = ((Float)kvalue).floatValue();
             break;
-        case 3:
-            serializeVDouble (((Double)kvalue).doubleValue(), vvalue,  partitionId,  indexPosition);
-            break;
-        case 6:
-            serializeVObject (kvalue, vvalue,  partitionId,  indexPosition);
+        case Double:
+            throw new RuntimeException ("serialize V for double value is not implemented");
+        case Object:
+            this.okvalues[indexPosition] = kvalue;
+            this.okhashes[indexPosition] = kvalue.hashCode();
             break;
         default:
             throw new RuntimeException ("no specialied key-value type expected");
@@ -258,18 +228,18 @@ public class MapSHMShuffleStore implements MapShuffleStore {
 
     @Override
     public void storeKVPairs(int numberOfPairs, int scode) {
-        switch (scode) {
-        case 0:
+        switch (keyType) {
+        case Int:
             storeKVPairsWithIntKeys (numberOfPairs);
             break;
-        case 1:
+        case Long:
             storeKVPairsWithLongKeys (numberOfPairs);
             break;
-        case 2:
+        case Float:
             throw new RuntimeException ("key type of float is not implemented");
-        case 3:
+        case Double:
             throw new RuntimeException ("key type of double is not implemented");
-        case 6:
+        case Object:
             // If JNI map/reduce disabled,
             // we store serialized records later.
             if (this.enableJniCallback) {
@@ -402,9 +372,8 @@ public class MapSHMShuffleStore implements MapShuffleStore {
      * @return status information that represents the map processing status
      */
     @Override
-    public ShuffleDataModel.MapStatus sortAndStore() {
-         ShuffleDataModel.MapStatus status =
-             new ShuffleDataModel.MapStatus ();
+    public MapStatus sortAndStore() {
+         MapStatus status = new MapStatus();
 
          //the status details will be updated in JNI.
          nsortAndStore(this.pointerToStore, this.numberOfPartitions, status);
@@ -439,14 +408,14 @@ public class MapSHMShuffleStore implements MapShuffleStore {
      */
     private native void nsortAndStore (long ptrToStore,
                                        int totalNumberOfPartitions,
-                                       ShuffleDataModel.MapStatus mapStatus);
+                                       MapStatus mapStatus);
 
     /**
      * Write partitioned and sorted records into the GlobalHeap.
      * The records must to be serialized and contained in DirectBuffer to use in JNI.
      **/
-    public ShuffleDataModel.MapStatus writeToHeap(ByteBuffer buff, int[] sizes) {
-        ShuffleDataModel.MapStatus status = new ShuffleDataModel.MapStatus();
+    public MapStatus writeToHeap(ByteBuffer buff, int[] sizes) {
+        MapStatus status = new MapStatus();
         nwriteToHeap(this.pointerToStore, this.numberOfPartitions, sizes, buff, status);
         return status;
     }
@@ -455,7 +424,7 @@ public class MapSHMShuffleStore implements MapShuffleStore {
                                      int totalNumberOfPartitions,
                                      int[] partitionLengths,
                                      ByteBuffer holder,
-                                     ShuffleDataModel.MapStatus mapStatus);
+                                     MapStatus mapStatus);
 
     @Override
     public int getStoreId() {
