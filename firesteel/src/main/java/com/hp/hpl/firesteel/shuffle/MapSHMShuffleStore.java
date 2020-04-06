@@ -19,7 +19,6 @@ package com.hp.hpl.firesteel.shuffle;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
 import org.apache.spark.serializer.Serializer;
@@ -200,9 +199,10 @@ public class MapSHMShuffleStore implements MapShuffleStore {
     public void serializeKVPair(Object kvalue, Object vvalue, int partitionId, int indexPosition, int scode) {
         this.npartitions[indexPosition] = partitionId;
 
-        // TODO: explain why classTag required.
-        final ClassTag classTag = ClassTag$.MODULE$.apply(Object.class);
-        this.byteBuffer.put(this.serializer.serialize(vvalue, classTag));
+        // In terms of type erasing, we need to pass serializers the class info in runtime.
+        this.byteBuffer.put(
+                            this.serializer.serialize(vvalue, ClassTag$.MODULE$.Object()));
+
         this.voffsets[indexPosition]= this.byteBuffer.position();
 
         switch (keyType) {
