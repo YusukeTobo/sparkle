@@ -183,49 +183,6 @@ public interface ReduceShuffleStore {
         int getSimpleKVPairsWithLongKeys (ArrayList<Long> kvalues, ArrayList<Object> values, int knumbers); 
 
         /**
-         * for special K value type that is string
-         * @param kvalues
-         * @param vvalues
-         * @param knumbers
-         * @return the actual key/value pairs that are available (it can be the last processing
-         * batch.
-         */
-        int getKVPairsWithStringKeys (ArrayList<String> kvalues, ArrayList<ArrayList<Object>> vvalues, int knumbers);
-        
-        
-        /**
-         * for special K value type that is long, to retrieve key/value pairs
-         * @param kvalues
-         * @param values
-         * @param knumbers
-         * @return the actual simple key/value pairs that are available (it can be the last processing batch) 
-         */
-        int getSimpleKVPairsWithStringKeys (ArrayList<String> kvalues, ArrayList<Object> values, int knumbers); 
-        
-        /**
-         * for speical K value type that is byte array, to retrieve key/values pairs
-         * @param kvalues
-         * @param vvalues
-         * @param knumbers
-         * @return
-         */
-        public int getKVPairsWithByteArrayKeys (
-                            ArrayList<byte[]> kvalues, ArrayList<ArrayList<Object>> vvalues, int knumbers);
-
-
-       /**
-        * for speical K value type that is byte array, to retrieve key/value pairs
-        * @param kvalues
-        * @param values
-        * @param knumbers
-        * @return
-        */
-        public int getSimpleKVPairsWithByteArrayKeys (
-                                     ArrayList<byte[]> kvalues, ArrayList<Object> values, int knumbers);
- 
-        
-        
-        /**
          * retrieve the unique store id. 
          * @return
          */

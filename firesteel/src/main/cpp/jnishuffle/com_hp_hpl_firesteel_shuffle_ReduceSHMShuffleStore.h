@@ -143,38 +143,6 @@ JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_n
 JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_nGetSimpleKVPairsWithLongKeys
   (JNIEnv *, jobject, jlong, jobject, jint, jint, jobject);
 
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    nGetKVPairsWithByteArrayKeys
- * Signature: (JLjava/nio/ByteBuffer;IILcom/hp/hpl/firesteel/shuffle/ShuffleDataModel/MergeSortedResult;)I
- */
-JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_nGetKVPairsWithByteArrayKeys
-  (JNIEnv *, jobject, jlong, jobject, jint, jint, jobject);
-
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    nGetSimpleKVPairsWithByteArrayKeys
- * Signature: (JLjava/nio/ByteBuffer;IILcom/hp/hpl/firesteel/shuffle/ShuffleDataModel/MergeSortedResult;)I
- */
-JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_nGetSimpleKVPairsWithByteArrayKeys
-  (JNIEnv *, jobject, jlong, jobject, jint, jint, jobject);
-
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    nGetKVPairsWithStringKeys
- * Signature: (JLjava/nio/ByteBuffer;IILcom/hp/hpl/firesteel/shuffle/ShuffleDataModel/MergeSortedResult;)I
- */
-JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_nGetKVPairsWithStringKeys
-  (JNIEnv *, jobject, jlong, jobject, jint, jint, jobject);
-
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    nGetSimpleKVPairsWithStringKeys
- * Signature: (JLjava/nio/ByteBuffer;IILcom/hp/hpl/firesteel/shuffle/ShuffleDataModel/MergeSortedResult;)I
- */
-JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_nGetSimpleKVPairsWithStringKeys
-  (JNIEnv *, jobject, jlong, jobject, jint, jint, jobject);
-
 #ifdef __cplusplus
 }
 #endif

@@ -24,8 +24,6 @@ import java.io.IOException;
 
 import org.apache.spark.serializer.Serializer;
 
-import com.esotericsoftware.kryo.Kryo;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -230,10 +228,10 @@ public class ShuffleStoreManager {
      *engine side to hold the data that is to be de-serialized at the Java side.
      *
      */
-    public ReduceSHMShuffleStore createReduceShuffleStore(Kryo kryo, ByteBuffer byteBuffer,
+    public ReduceSHMShuffleStore createReduceShuffleStore(Serializer serializer, ByteBuffer byteBuffer,
                                                     int shuffleId, int reduceId, int numberOfPartitions,
                                                     boolean ordering, boolean aggregation) {
-        ReduceSHMShuffleStore reduceShuffleStore= new ReduceSHMShuffleStore(kryo, byteBuffer, this);
+        ReduceSHMShuffleStore reduceShuffleStore= new ReduceSHMShuffleStore(serializer, byteBuffer, this);
         reduceShuffleStore.initialize(shuffleId, reduceId, numberOfPartitions, ordering, aggregation);
         //NOTE: reduce shuffle store does not need to be tracked. 
         return reduceShuffleStore;

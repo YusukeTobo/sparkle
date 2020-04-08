@@ -20,8 +20,6 @@ package org.apache.spark.shuffle.shm
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle.{BaseShuffleHandle, ShuffleReader}
 import org.apache.spark.TaskContext
-
-import org.apache.spark.serializer.KryoSerializer;
 import org.apache.spark.SparkEnv;
 
 import java.nio.ByteBuffer
@@ -62,7 +60,7 @@ private[spark] class ShmShuffleReader[K, C](shuffleStoreMgr:ShuffleStoreManager,
   //per shuffle task
   private val reduceShuffleStore =
                shuffleStoreMgr.createReduceShuffleStore(
-                    serializer.asInstanceOf[KryoSerializer].newKryo,
+                    serializer,
                     threadLocalShuffleResource.getSerializationResource().getByteBuffer(),
                     shuffleId, reduceId, numReducePartitions,
                     ordering, aggregation)

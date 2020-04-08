@@ -34,7 +34,6 @@ import java.util.ArrayList
 import java.lang.{Float => JFloat}
 import java.lang.{Integer => JInteger}
 import java.lang.{Long => JLong}
-import java.lang.{String => JString}
 
 /**
  * to create iterator that wrapps the de-serialized data pulled from the C++ shuffle engine,
@@ -71,8 +70,6 @@ private[spark] class ShmShuffleFetcherKeyValuesIterator
    private val ikvalues = new ArrayList[JInteger]()
    private val fkvalues = new ArrayList[JFloat]()
    private val lkvalues = new ArrayList[JLong]()
-   private val skvalues = new ArrayList[JString]()
-   private val bakvalues = new ArrayList[Array[Byte]]()
    private val okvalues = new ArrayList[Object]()
 
   private val shuffleMetrics =
@@ -205,54 +202,6 @@ private[spark] class ShmShuffleFetcherKeyValuesIterator
 
          if (actualPairs < SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE ){
             endOfFetch = true
-         }
-       }
-       case  ShuffleDataModel.KValueTypeId.String => {
-         //to retrieve a collection of {k, {v1, v2,...}} from the C++ shuffle engine where
-         //WARNING: we need to provide list based APIS, instead of []. Need to see whether it 
-         //can be passed around
-         //create a holder, we need to move this holder in outer scope. so that we do not need
-         //to create every time
-         if (fetchRound == 0) {
-           for (i <- 0 to SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE - 1) {
-             skvalues.add(null) //initialization to 0;
-             vvalues.add(null) //initialization to null;
-           }
-         }
-         actualPairs= reduceShuffleStore.getKVPairsWithStringKeys(
-                         skvalues, vvalues, SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE)
-         //now, push the data to the kvbuffer.
-         for (i <- 0 to actualPairs-1) {
-           val vv = vvalues(i).seq
-           kvBuffer (i) = (skvalues(i), vv)
-         }
-
-         if (actualPairs < SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE ){
-            endOfFetch = true
-         }
-       }
-       case  ShuffleDataModel.KValueTypeId.ByteArray => {
-         //to retrieve a collection of {k, {v1, v2,...}} from the C++ shuffle engine where
-         //WARNING: we need to provide list based APIS, instead of []. Need to see whether it
-         //can be passed around
-         //create a holder, we need to move this holder in outer scope. so that we do not need
-         //to create every time
-         if (fetchRound == 0) {
-           for (i <- 0 to SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE - 1) {
-             bakvalues.add(null) //initialization to 0;
-             vvalues.add(null) //initialization to null;
-           }
-         }
-         actualPairs= reduceShuffleStore.getKVPairsWithByteArrayKeys(
-           bakvalues, vvalues, SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE)
-         //now, push the data to the kvbuffer.
-         for (i <- 0 to actualPairs-1) {
-           val vv = vvalues(i).seq
-           kvBuffer (i) = (bakvalues(i), vv)
-         }
-
-         if (actualPairs < SHUFFLE_MERGED_KEYVALUE_PAIRS_RETRIEVAL_SIZE ){
-           endOfFetch = true
          }
        }
        case  ShuffleDataModel.KValueTypeId.Object => {
