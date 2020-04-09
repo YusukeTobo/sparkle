@@ -65,22 +65,6 @@ JNIEXPORT jint JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_n
 
 /*
  * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    ngetKValueType
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_ngetKValueType
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
- * Method:    ngetVValueType
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore_ngetVValueType
-  (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     com_hp_hpl_firesteel_shuffle_ReduceSHMShuffleStore
  * Method:    nGetKVPairs
  * Signature: (J[Ljava/lang/Object;Ljava/nio/ByteBuffer;I[II)I
  */

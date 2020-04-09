@@ -59,41 +59,12 @@ public interface ReduceShuffleStore {
          */
         void mergeSort(ShuffleDataModel.ReduceStatus statuses);
 
-
         /**
          * The K value type information will have to be passed from the map to the reducer.
          *
          * @return the type id
          */
         ShuffleDataModel.KValueTypeId getKValueTypeId();
-
-        /**
-         * to support when K value type is an arbitrary object type. to retrieve the serialized
-         * type information for K values that can be de-serialized by Java/Scala. The type information
-         * will be retrieved from the map side.
-         */
-        byte[] getKValueType();
-
-        /**
-         * to further retrieve the class definition, based on the type definition stored in the input parameter.
-         * @param typeDefinition holding the value type definition
-         * @return the class that represents the type definition.
-         */
-        Class getVValueTypeClass(byte[] typeDefinition);
-        
-        /**
-         * NOTE: to set the K value type used in this shuffle store. This can not be set by the reducer. It is 
-         * retrieved from the data produced in NVM region by the map side. 
-         * @param ktype
-         */
-        //void setKValueTypeId(ShuffleDataModel.KValueTypeId ktype);
-
-        /**
-         * to retrieve the serialized type information for the V values that can be
-         * de-serialized by Java/Scala. The type information will be retrieved from the map side.
-         */
-        byte[] getVValueType();
-
 
         /**
          * to retrieve a specified number, for example, 100, of Key values, along with the multi-v-values

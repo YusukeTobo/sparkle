@@ -37,6 +37,10 @@ import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.ReduceStatus;
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.MergeSortedResult;
+import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.KValueTypeId;
+
 public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private static final Logger LOG =
         LoggerFactory.getLogger(ReduceSHMShuffleStore.class.getName());
@@ -155,7 +159,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private native void nshutdown(long ptrToStore);
 
     @Override
-    public void mergeSort(ShuffleDataModel.ReduceStatus statuses) {
+    public void mergeSort(ReduceStatus statuses) {
         if (LOG.isDebugEnabled()) {
             LOG.debug ("store id " + this.storeId + " reduce-side shared-memory based shuffle store perform merge-sort with id:"
                        + this.shuffleId + "-" + this.reduceId);
@@ -188,7 +192,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     // NOTE: This method is dedicated to pairs with the Object type key.
     //       ShuffleStore(Like) contains whole serialized pairs in the DRAM from the GlobalHeap.
     //       ShuffleStoreLike is stateless store which copys all serialized paris into DirectBuffer.
-    public void createShuffleStore(ShuffleDataModel.ReduceStatus statuses) {
+    public void createShuffleStore(ReduceStatus statuses) {
         int totalBuckets = statuses.getMapIds().length;
 
         if (this.enableJniCallback) {
@@ -214,18 +218,18 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
      * @return the created reduce shuffle store native pointer
      */
     private native long nmergeSort(long ptrToShuffleManager, int shuffleId, int reduceId,
-                                         ShuffleDataModel.ReduceStatus statuses, int totalBuckets,
+                                         ReduceStatus statuses, int totalBuckets,
                                          int numberOfPartitions, ByteBuffer buffer, int bufferCapacity,
                                          boolean ordering, boolean aggregation);
 
     private native long ncreateShuffleStore(long ptrToShuffleManager, int shuffleId, int reduceId,
-                                            ShuffleDataModel.ReduceStatus statuses,
+                                            ReduceStatus statuses,
                                             int totalBuckets, ByteBuffer buffer, int bufferCapacity,
                                             boolean ordering, boolean aggregation);
 
     // copy whole serialized kv pairs in NV buckets to DirectBuffer.
     private native long nfromShuffleStoreLike(long ptrToShuffleManager, int shuffleId, int reduceId,
-                                              ShuffleDataModel.ReduceStatus statuses,
+                                              ReduceStatus statuses,
                                               int totalBuckets, ByteBuffer buffer, int bufferCapacity);
 
     /**
@@ -234,98 +238,39 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
      * category information for key.
      * @return
      */
-    @Deprecated
     @Override
-    public ShuffleDataModel.KValueTypeId getKValueTypeId() {
+    public KValueTypeId getKValueTypeId() {
        int val = ngetKValueTypeId(this.pointerToStore);
 
-       if (val==ShuffleDataModel.KValueTypeId.Int.state){
-           return ShuffleDataModel.KValueTypeId.Int;
+       if (val==KValueTypeId.Int.state){
+           return KValueTypeId.Int;
        }
-       else if (val == ShuffleDataModel.KValueTypeId.Long.state){
-            return ShuffleDataModel.KValueTypeId.Long;
+       else if (val == KValueTypeId.Long.state){
+            return KValueTypeId.Long;
        }
-       else if (val == ShuffleDataModel.KValueTypeId.Float.state){
-           return ShuffleDataModel.KValueTypeId.Float;
+       else if (val == KValueTypeId.Float.state){
+           return KValueTypeId.Float;
        }
-       else if (val == ShuffleDataModel.KValueTypeId.Double.state){
-           return ShuffleDataModel.KValueTypeId.Double;
+       else if (val == KValueTypeId.Double.state){
+           return KValueTypeId.Double;
        }
-       else if (val == ShuffleDataModel.KValueTypeId.String.state){
-           return ShuffleDataModel.KValueTypeId.String;
+       else if (val ==  KValueTypeId.Object.state){
+           return KValueTypeId.Object;
        }
-       else if (val == ShuffleDataModel.KValueTypeId.ByteArray.state){
-           return ShuffleDataModel.KValueTypeId.ByteArray;
-       }
-       else if (val ==  ShuffleDataModel.KValueTypeId.Object.state){
-           return ShuffleDataModel.KValueTypeId.Object;
-       }
-       else if (val == ShuffleDataModel.KValueTypeId.Unknown.state) {
+       else if (val == KValueTypeId.Unknown.state) {
            throw new RuntimeException("Unknown key value type encountered");
        }
        else {
-    	   throw new RuntimeException("unsupported key value type encountered");
+           throw new RuntimeException("unsupported key value type encountered");
        }
     }
 
     /**
      * Current implementation in C++ has the Key adn Value type definition retrieved from the merge-sort channel
-     * associated with the map bucket. Thus this getKValueTypeID 
+     * associated with the map bucket. Thus this getKValueTypeID
      * @return
      */
-    @Deprecated
     private native int ngetKValueTypeId(long ptrToStore);
-
-
-    @Deprecated
-    @Override
-    public byte[] getKValueType() {
-        byte[] result = ngetKValueType(this.pointerToStore);
-        return result;
-    }
-
-    /**
-     * to retrieve from C++ side the key definition for the arbitrary object based key.
-     */
-    @Deprecated
-    private native byte[] ngetKValueType(long ptrToStore);
-
-    @Deprecated
-    @Override
-    public byte[] getVValueType() {
-    	byte[] result = ngetVValueType(this.pointerToStore);
-    	return result;
-    }
-
-    @Deprecated
-    @Override
-    public Class getVValueTypeClass(byte[] typeDefinition) {
-        /*
-         //we make sure that the byte buffer has big enough size to hold typeDefinition
-    	 if (this.deserializer.getByteBuffer().capacity() < typeDefinition.length) {
-    		 throw new RuntimeException (
-    				 "store id " + this.storeId + 
-    				 " shm shuffle deserialization has too small byte-buffer to deserialize value type.");
-    	 }
-    	 this.deserializer.getByteBuffer().put(typeDefinition);
-    	 this.deserializer.getByteBuffer().position(0);
-    	 this.deserializer.getByteBuffer().limit(typeDefinition.length);
-		 
-    	 this.deserializer.init();
-		 
-    	 Class retrievedClass = deserializer.readClass();
-		 deserializer.close();
-    	
-    	 return retrievedClass;
-        */
-        return null;
-    }
-
-    /**
-     * to retrieve from C++ side the value type definition for the arbitrary object based value. 
-     */
-    @Deprecated
-    private native byte[] ngetVValueType(long ptrToStore);
 
     @Override
     public int getKVPairs (ArrayList<Object> kvalues, ArrayList<ArrayList<Object>> vvalues, int knumbers,
@@ -524,7 +469,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     //of object array will have to be created by Java.
     @Override
     public int getKVPairsWithIntKeys (ArrayList<Integer> kvalues, ArrayList<ArrayList<Object>> vvalues, int knumbers) {
-      ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+      MergeSortedResult mergeResult = new MergeSortedResult();
       boolean bufferExceeded = mergeResult.getBufferExceeded();
       if (bufferExceeded) {
           LOG.error( "store id " + this.storeId +
@@ -589,12 +534,12 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
      */
     private native int nGetKVPairsWithIntKeys(long ptrToShuffleStore,
                       ByteBuffer byteBuffer, int buffer_capacity,
-                      int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+                      int knumbers, MergeSortedResult mergeResult);
 
     @Override
     public  int getSimpleKVPairsWithIntKeys (ArrayList<Integer>kvalues, ArrayList<Object> values, int knumbers) {
         //I can still use the same APIs for the simple key/value pairs retrieval
-        ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+        MergeSortedResult mergeResult = new MergeSortedResult();
         boolean bufferExceeded = mergeResult.getBufferExceeded();
         if (bufferExceeded) {
             LOG.error("store id " + this.storeId +
@@ -632,12 +577,12 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     private native int nGetSimpleKVPairsWithIntKeys(long ptrToShuffleStore,
             ByteBuffer byteBuffer, int buffer_capacity,
-            int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+            int knumbers, MergeSortedResult mergeResult);
 
     @Deprecated
     @Override
     public int getKVPairsWithFloatKeys (ArrayList<Float> kvalues, ArrayList<ArrayList<Object>> vvalues, int knumbers) {
-        ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+        MergeSortedResult mergeResult = new MergeSortedResult();
 
         this.byteBuffer.clear();
         int actualKVPairs =
@@ -669,12 +614,12 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     private native int nGetKVPairsWithFloatKeys(long ptrToShuffleStore,
                         ByteBuffer byteBuffer, int buffer_capacity,
-                        int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+                        int knumbers, MergeSortedResult mergeResult);
 
     @Deprecated
     @Override
     public int getSimpleKVPairsWithFloatKeys (ArrayList<Float> kvalues, ArrayList<Object> values, int knumbers) {
-        ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+        MergeSortedResult mergeResult = new MergeSortedResult();
 
         this.byteBuffer.clear();
         int actualKVPairs =
@@ -706,11 +651,11 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     private native int nGetSimpleKVPairsWithFloatKeys(long ptrToShuffleStore,
             ByteBuffer byteBuffer, int buffer_capacity,
-            int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+            int knumbers, MergeSortedResult mergeResult);
 
     @Override
     public int getKVPairsWithLongKeys (ArrayList<Long> kvalues,  ArrayList<ArrayList<Object>> vvalues, int knumbers){
-        ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+        MergeSortedResult mergeResult = new MergeSortedResult();
         boolean bufferExceeded = mergeResult.getBufferExceeded();
         if (bufferExceeded) {
             LOG.error("store id " + this.storeId +
@@ -762,11 +707,11 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     private native int nGetKVPairsWithLongKeys(long pointerToStore,
                        ByteBuffer byteBuffer, int buffer_capacity,
-                       int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+                       int knumbers, MergeSortedResult mergeResult);
 
     @Override
     public int getSimpleKVPairsWithLongKeys (ArrayList<Long> kvalues, ArrayList<Object> values, int knumbers) {
-        ShuffleDataModel.MergeSortedResult mergeResult = new ShuffleDataModel.MergeSortedResult();
+        MergeSortedResult mergeResult = new MergeSortedResult();
         boolean bufferExceeded = mergeResult.getBufferExceeded();
         if (bufferExceeded) {
             LOG.error("store id " + this.storeId +
@@ -802,7 +747,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     private native int nGetSimpleKVPairsWithLongKeys(long pointerToStore,
             ByteBuffer byteBuffer, int buffer_capacity,
-            int knumbers, ShuffleDataModel.MergeSortedResult mergeResult);
+            int knumbers, MergeSortedResult mergeResult);
 
     @Override
     public int getStoreId() {

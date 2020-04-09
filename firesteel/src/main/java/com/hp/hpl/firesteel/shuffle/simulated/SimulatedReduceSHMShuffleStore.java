@@ -14,7 +14,6 @@
  * limitations under the License.
  *
  */
-
 package com.hp.hpl.firesteel.shuffle.simulated;
 
 import com.hp.hpl.firesteel.shuffle.*;
@@ -28,19 +27,16 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Random;
 
-
 /**
  * To simualted reduce side shuffle engine. For unit testing purpose.
  */
 public class SimulatedReduceSHMShuffleStore implements ReduceShuffleStore {
     private static final Logger LOG= LoggerFactory.getLogger(SimulatedReduceSHMShuffleStore.class.getName());
 
-
     public SimulatedReduceSHMShuffleStore
                      (Kryo kryo, ByteBuffer byteBuffer, SimulatedShuffleStoreManager shuffleStoreManager) {
 
     }
-
 
     @Override
     public void initialize (int shuffleId, int reduceId, int numberOfPartitions, boolean ordering, boolean aggregation) {
@@ -79,22 +75,6 @@ public class SimulatedReduceSHMShuffleStore implements ReduceShuffleStore {
        this.kvalueTypeId = ktype;
     }
 
-    @Override
-    public byte[] getKValueType() {
-        throw new UnsupportedOperationException("not implemented yet.");
-    }
-
-
-    @Override
-    public byte[] getVValueType() {
-        throw new UnsupportedOperationException("not implemented yet.");
-    }
-
-    @Override
-    public Class getVValueTypeClass(byte[] typeDefinition) {
-    	throw new UnsupportedOperationException("not implemented yet.");
-    }
-    
     //we need to pass in the value holder and key holder, given the number of maximum knumbers
     //we will get.
     @Override
