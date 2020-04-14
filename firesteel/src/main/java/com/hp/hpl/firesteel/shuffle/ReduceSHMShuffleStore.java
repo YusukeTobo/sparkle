@@ -22,13 +22,12 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.Iterator;
 import java.nio.ByteBuffer;
 
 import scala.Tuple2;
 import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
-import scala.collection.JavaConversions;
+import scala.collection.Iterator;
 
 import org.apache.spark.serializer.Serializer;
 import org.apache.spark.serializer.SerializerInstance;
@@ -310,8 +309,8 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
                                     int knumbers, int[] numRawPairs) {
         // initialize the Reducer.
         if (this.numFetchedKvPairs == 0) {
-            Iterator<Object> it = JavaConversions.asJavaIterator(
-                    this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator());
+            Iterator<Object> it =
+                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
             int numPairsRead = 0;
             while (it.hasNext()) {
@@ -411,8 +410,8 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private int readDirectBuffer(ArrayList<Object> kvalues, ArrayList<Object> vvalues, int knumbers) {
         int numReadPairs = 0;
 
-        Iterator<Object> it = JavaConversions.asJavaIterator(
-                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator());
+        Iterator<Object> it =
+            this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
         for (int i=0; i<knumbers; ++i) {
             if (!it.hasNext()) {
                 this.byteBuffer.clear();
@@ -430,8 +429,8 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private int mergeSortDirectBuffer(ArrayList<Object> kvalues, ArrayList<Object> vvalues, int knumbers) {
         // initialize the Reducer.
         if (this.numFetchedKvPairs == 0) {
-            Iterator<Object> it = JavaConversions.asJavaIterator(
-                    this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator());
+            Iterator<Object> it =
+                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
             while (it.hasNext()) {
                 this.kvPairBuffer.add(new Tuple2<>((Comparable) it.next(), it.next()));
@@ -484,22 +483,22 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
       //then populate back to the list the key values.
       int[] pkValues = mergeResult.getIntKvalues();
       int[] pvVOffsets =mergeResult.getVoffsets(); //offset to each group of {vp,1, vp,2...,vp,k}.
+      int prevPos = 0;
       for (int i=0; i<actualKVPairs; i++){
           kvalues.set(i, pkValues[i]);
 
-          //the corresponding value pairs
-          ByteBuffer values = this.byteBuffer.slice();
-          values.limit(pvVOffsets[i] - this.byteBuffer.position());
-          Iterator<Object> it = JavaConversions.asJavaIterator(
-                  this.serializer.deserializeStream(new ByteBufferInputStream(values)).asIterator());
+          this.byteBuffer.position(prevPos);
+          this.byteBuffer.limit(pvVOffsets[i]);
+          Iterator<Object> it =
+              this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
-          ArrayList<Object> holder = new ArrayList<Object>();
+          ArrayList<Object> holder = new ArrayList<>();
           while (it.hasNext()) {
               holder.add(it.next());
           }
           vvalues.set(i, holder);
 
-          this.byteBuffer.position(pvVOffsets[i]);
+          prevPos = this.byteBuffer.limit();
       }
 
       if (LOG.isDebugEnabled()) {
@@ -552,10 +551,16 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
             nGetSimpleKVPairsWithIntKeys(this.pointerToStore, this.byteBuffer,
                                          this.byteBuffer.capacity(), knumbers, mergeResult);
 
+        if (actualKVPairs == 0) {
+            return 0;
+        }
+
         //then populate back to the list the key values.
         int[] pkValues = mergeResult.getIntKvalues();
-        Iterator<Object> it = JavaConversions.asJavaIterator(
-                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator());
+        int[] pvVOffsets =mergeResult.getVoffsets();
+        this.byteBuffer.limit(pvVOffsets[actualKVPairs-1]);
+        Iterator<Object> it =
+            this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
         for (int i=0; i<actualKVPairs; i++){
             kvalues.set(i, pkValues[i]);
             values.set(i, it.next());
@@ -671,22 +676,23 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
         long pkValues[] = mergeResult.getLongKvalues();
         int pvVOffsets[] = mergeResult.getVoffsets();  //offset to each group of {vp,1, vp,2...,vp,k}.
         //then populate back to the list the key values.
-        for (int i=0; i<actualKVPairs; i++){
+        int prevPos = 0;
+        for (int i=0; i<actualKVPairs; ++i){
             kvalues.set(i, pkValues[i]);
 
-            //the corresponding value pairs
-            ByteBuffer values = this.byteBuffer.slice();
-            values.limit(pvVOffsets[i] - this.byteBuffer.position());
-            Iterator<Object> it = JavaConversions.asJavaIterator(
-                    this.serializer.deserializeStream(new ByteBufferInputStream(values)).asIterator());
+            this.byteBuffer.position(prevPos);
+            this.byteBuffer.limit(pvVOffsets[i]);
+            // NOTE: deserializeStream is really slow method, but I can only use it from SerializeInstance...
+            scala.collection.Iterator<Object> it =
+                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
-            ArrayList<Object> holder = new ArrayList<Object>();
+            ArrayList<Object> holder = new ArrayList<>();
             while (it.hasNext()) {
                 holder.add(it.next());
             }
             vvalues.set(i, holder);
 
-            this.byteBuffer.position(pvVOffsets[i]);
+            prevPos = this.byteBuffer.limit();
         }
 
         if (LOG.isDebugEnabled()) {
@@ -724,9 +730,16 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
             nGetSimpleKVPairsWithLongKeys(this.pointerToStore, this.byteBuffer,
                                           this.byteBuffer.capacity(), knumbers, mergeResult);
 
+        if (actualKVPairs == 0) {
+            return 0;
+        }
+
         long pkValues[] = mergeResult.getLongKvalues();
-        Iterator<Object> it = JavaConversions.asJavaIterator(
-                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator());
+        int pvVOffsets[] = mergeResult.getVoffsets();
+
+        this.byteBuffer.limit(pvVOffsets[actualKVPairs-1]);
+        Iterator<Object> it =
+            this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
         for (int i=0; i<actualKVPairs; i++){
             kvalues.set(i, pkValues[i]);
             values.set(i, it.next());
