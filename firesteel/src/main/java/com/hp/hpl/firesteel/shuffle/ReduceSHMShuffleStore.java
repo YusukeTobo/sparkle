@@ -87,6 +87,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     }
 
     private int numFetchedKvPairs = 0; // from kvPairBuffer or kvPairMap.
+    private Iterator<Tuple2<Object, Object>> kvPairIter = null;
     private List<Tuple2<Comparable, Object>> kvPairBuffer = new ArrayList<>();
     private Comparator<Tuple2<Comparable, Object>> comp = new Comparator<Tuple2<Comparable, Object>>() {
             @Override
@@ -150,6 +151,11 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
     @Override
     public void shutdown (){
+        if (this.pointerToStore == 0L) {
+            LOG.info("store:" + this.storeId + " has been shutdonw");
+            return ;
+        }
+
         LOG.info("store id " + this.storeId + "reduce-side shared-memory based shuffle store shutdown with id:"
                          + this.shuffleId + "-" + this.reduceId);
         nshutdown(this.shuffleStoreManager.getPointer(), this.pointerToStore);
@@ -408,21 +414,26 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
      * @return # of pairs read. It would be less than knumber because of the end of buffer.
      */
     private int readDirectBuffer(ArrayList<Object> kvalues, ArrayList<Object> vvalues, int knumbers) {
-        int numReadPairs = 0;
+        if (kvPairIter == null) {
+            kvPairIter = this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asKeyValueIterator();
+        }
 
-        Iterator<Object> it =
-            this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
+        int numReadPairs = 0;
         for (int i=0; i<knumbers; ++i) {
-            if (!it.hasNext()) {
+            if (!kvPairIter.hasNext()) {
+                // cleanup.
                 this.byteBuffer.clear();
+                kvPairIter = null;
                 break;
             }
 
-            kvalues.set(i, it.next());
-            vvalues.set(i, it.next());
+            Tuple2<Object, Object> kv = kvPairIter.next();
+            kvalues.set(i, kv._1);
+            vvalues.set(i, kv._2);
 
             numReadPairs++;
         }
+
         return numReadPairs;
     }
 
