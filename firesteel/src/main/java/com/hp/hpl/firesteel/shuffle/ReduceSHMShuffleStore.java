@@ -25,8 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.ByteBuffer;
 
 import scala.Tuple2;
-import scala.reflect.ClassTag;
-import scala.reflect.ClassTag$;
 import scala.collection.Iterator;
 
 import org.apache.spark.serializer.Serializer;
@@ -43,9 +41,6 @@ import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.KValueTypeId;
 public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private static final Logger LOG =
         LoggerFactory.getLogger(ReduceSHMShuffleStore.class.getName());
-
-    private static final ClassTag<Object> OBJ_CLASS_TAG =
-        ClassTag$.MODULE$.Object();
 
     private ByteBuffer byteBuffer = null;
     // NOTE: Avoid `deserialize` methods because they read the whole buffer and set position to its limit.
@@ -292,20 +287,23 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
         int actualKVPairs = nGetKVPairs(this.pointerToStore, okvalues,
                                         this.byteBuffer, this.byteBuffer.capacity(),
                                         pvVOffsets, knumbers);
-        this.byteBuffer.flip();
 
+        int prevPos = 0;
         for (int i=0; i<actualKVPairs; i++) {
-            Object key = okvalues[i];
-            kvalues.set(i, key);
+            kvalues.set(i, okvalues[i]);
 
-            ArrayList<Object> holder = new ArrayList<Object>();
+            this.byteBuffer.position(prevPos);
+            this.byteBuffer.limit(pvVOffsets[i]);
+            Iterator<Object> it =
+                this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
-            int endPosition = pvVOffsets[i];
-            while (this.byteBuffer.position() < endPosition) {
-                holder.add(this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG));
+            ArrayList<Object> holder = new ArrayList<>();
+            while (it.hasNext()) {
+                holder.add(it.next());
             }
-
             vvalues.set(i, holder);
+
+            prevPos = this.byteBuffer.limit();
         }
 
         return actualKVPairs;
@@ -387,23 +385,13 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
         int actualKVPairs = nGetSimpleKVPairs(this.pointerToStore, okvalues,
                                               this.byteBuffer,
                                               this.byteBuffer.capacity(), pvVOffsets, knumbers);
-        this.byteBuffer.flip();
+
+        Iterator<Object> it =
+            this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
         for (int i=0; i<actualKVPairs; i++) {
-            Object key = okvalues[i];
-            kvalues.set(i, key);
-
-            Object value = null;
-            {
-                int endPosition = pvVOffsets[i];
-                if(this.byteBuffer.position() < endPosition){
-                    value = this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG);
-                }
-                else {
-                    throw new RuntimeException ("deserializer cannot de-serialize object following the offset boundary");
-                }
-            }
-            vvalues.set(i, value);
+            kvalues.set(i, okvalues[i]);
+            vvalues.set(i, it.next());
         }
 
         return actualKVPairs;
@@ -617,8 +605,8 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
             {
                 int endPosition = pvVOffsets[i];
                 while (this.byteBuffer.position() < endPosition){
-                    Object p = this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG);
-                    holder.add(p);
+                    //Object p = this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG);
+                    //holder.add(p);
                 }
             }
 
@@ -652,7 +640,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
             {
                 int endPosition = pvVOffsets[i];
                 if (this.byteBuffer.position() < endPosition){
-                    p = this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG);
+                    //p = this.serializer.deserialize(this.byteBuffer, OBJ_CLASS_TAG);
                 }
                 else {
                     throw new RuntimeException ("deserializer cannot de-serialize object following the offset boundary");
