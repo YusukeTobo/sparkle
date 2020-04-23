@@ -23,6 +23,11 @@ import scala.reflect.ClassTag$;
 
 import org.apache.spark.serializer.Serializer;
 import org.apache.spark.serializer.SerializerInstance;
+import org.apache.spark.serializer.SerializationStream;
+import org.apache.spark.sql.execution.UnsafeRowSerializerInstance;
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
+
+import com.fasterxml.jackson.databind.util.ByteBufferBackedOutputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,13 +198,32 @@ public class MapSHMShuffleStore implements MapShuffleStore {
 
     private native void nshutdown(long ptrToMgr, long ptrToStore);
 
+    private long sizeTotalValueInBytes = 0L;
     @Override
     public void serializeKVPair(Object kvalue, Object vvalue, int partitionId, int indexPosition, int scode) {
-        this.npartitions[indexPosition] = partitionId;
+        // NOTE: UnsafeRowSerializer does not implement `serialize` method and `serializationStream is quite slow`.
+        if (this.serializer instanceof UnsafeRowSerializerInstance) {
+            this.npartitions[indexPosition] = ((Integer) kvalue).intValue();
 
-        // In terms of type erasing, we need to pass serializers the class info in runtime.
-        this.byteBuffer.put(
-                            this.serializer.serialize(vvalue, ClassTag$.MODULE$.Object()));
+            int prev = this.byteBuffer.position();
+
+            // NOTE: In terms of type erasing, we need to pass serializers the class info in runtime.
+            SerializationStream ss = this.serializer
+                .serializeStream(new ByteBufferBackedOutputStream(this.byteBuffer))
+                .writeValue(vvalue, ClassTag$.MODULE$.Object());
+            /*
+              NOTE: It's important to manually flush the stream because Serializer seems not to flush it.
+            */
+            ss.flush();
+
+            int sizeOfRow = ((UnsafeRow) vvalue).getSizeInBytes() + Integer.BYTES;
+            sizeTotalValueInBytes += sizeOfRow;
+            //LOG.info(String.format("vvalue[%d] pos: %d+%d -> %d", indexPosition, prev, sizeOfRow, this.byteBuffer.position()));
+        } else {
+            this.npartitions[indexPosition] = partitionId;
+            this.byteBuffer.put(
+                                this.serializer.serialize(vvalue, ClassTag$.MODULE$.Object()));
+        }
 
         this.voffsets[indexPosition]= this.byteBuffer.position();
 
@@ -372,6 +396,8 @@ public class MapSHMShuffleStore implements MapShuffleStore {
     @Override
     public MapStatus sortAndStore() {
          MapStatus status = new MapStatus();
+
+         LOG.info(String.format("sort and store map[%d]: %d", mapTaskId, sizeTotalValueInBytes));
 
          //the status details will be updated in JNI.
          nsortAndStore(this.pointerToStore, this.numberOfPartitions, status);

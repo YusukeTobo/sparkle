@@ -30,6 +30,8 @@ import scala.collection.Iterator;
 import org.apache.spark.serializer.Serializer;
 import org.apache.spark.serializer.SerializerInstance;
 import org.apache.spark.util.ByteBufferInputStream;
+import org.apache.spark.sql.execution.UnsafeRowSerializerInstance;
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -488,6 +490,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
 
           this.byteBuffer.position(prevPos);
           this.byteBuffer.limit(pvVOffsets[i]);
+
           Iterator<Object> it =
               this.serializer.deserializeStream(new ByteBufferInputStream(this.byteBuffer)).asIterator();
 
@@ -495,6 +498,7 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
           while (it.hasNext()) {
               holder.add(it.next());
           }
+
           vvalues.set(i, holder);
 
           prevPos = this.byteBuffer.limit();
@@ -533,6 +537,39 @@ public class ReduceSHMShuffleStore implements ReduceShuffleStore {
     private native int nGetKVPairsWithIntKeys(long ptrToShuffleStore,
                       ByteBuffer byteBuffer, int buffer_capacity,
                       int knumbers, MergeSortedResult mergeResult);
+
+    public boolean isUnsafeRow() {
+        return this.serializer instanceof UnsafeRowSerializerInstance;
+    }
+
+    public Iterator<Tuple2<Object, Object>> getSimpleKVPairsWithIntKeys() {
+        MergeSortedResult mergeResult = new MergeSortedResult();
+        boolean bufferExceeded = mergeResult.getBufferExceeded();
+        if (bufferExceeded) {
+            LOG.error("store id " + this.storeId +
+                      " deserialization buffer for shm shuffle reducer is exceeded; need to configure a bigger one");
+            return null;
+        }
+
+        this.byteBuffer.clear();
+        int actualKVPairs =
+            nGetSimpleKVPairsWithIntKeys(this.pointerToStore, this.byteBuffer,
+                                         this.byteBuffer.capacity(), Integer.MAX_VALUE, mergeResult);
+
+        LOG.info(String.format("reducerId[%d]: %d pairs fetched"
+                               , reduceId, actualKVPairs));
+
+        if (actualKVPairs == 0) {
+            return null;
+        }
+
+        int[] pvVOffsets =mergeResult.getVoffsets();
+        this.byteBuffer.limit(pvVOffsets[actualKVPairs -1]);
+
+        return this.serializer
+            .deserializeStream(new ByteBufferInputStream(this.byteBuffer))
+            .asKeyValueIterator();
+    }
 
     @Override
     public  int getSimpleKVPairsWithIntKeys (ArrayList<Integer>kvalues, ArrayList<Object> values, int knumbers) {

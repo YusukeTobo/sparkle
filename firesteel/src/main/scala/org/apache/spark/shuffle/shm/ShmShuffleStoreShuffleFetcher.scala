@@ -76,13 +76,16 @@ private[spark] object ShmShuffleStoreShuffleFetcher extends Logging {
       }
     }
 
-    val blockFetcherItr = if (aggregation) {
+    val blockFetcherItr = if (reduceShuffleStore.isUnsafeRow) {
+      new ShmShuffleUnsafeRowFetcher(
+        context, statuses, reduceShuffleStore
+      ).toIterator
+    } else if (aggregation) {
       new ShmShuffleFetcherKeyValuesIterator(
         context,
         statuses,
         reduceShuffleStore)
-    }
-    else {
+    } else {
       new ShmShuffleFetcherKeyValueIterator (
         context,
         statuses,
