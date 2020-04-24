@@ -198,6 +198,7 @@ public class MapSHMShuffleStore implements MapShuffleStore {
 
     private native void nshutdown(long ptrToMgr, long ptrToStore);
 
+    private SerializationStream ss = null;
     @Override
     public void serializeKVPair(Object kvalue, Object vvalue, int partitionId, int indexPosition, int scode) {
         // NOTE: UnsafeRowSerializer does not implement `serialize` method and `serializationStream is quite slow`.
@@ -205,9 +206,11 @@ public class MapSHMShuffleStore implements MapShuffleStore {
             this.npartitions[indexPosition] = ((Integer) kvalue).intValue();
 
             // NOTE: In terms of type erasing, we need to pass serializers the class info in runtime.
-            SerializationStream ss = this.serializer
-                .serializeStream(new ByteBufferBackedOutputStream(this.byteBuffer))
-                .writeValue(vvalue, ClassTag$.MODULE$.Object());
+            if (ss == null) {
+                ss = this.serializer
+                    .serializeStream(new ByteBufferBackedOutputStream(this.byteBuffer));
+            }
+            ss.writeValue(vvalue, ClassTag$.MODULE$.Object());
             /*
               NOTE: It's important to manually flush the stream because Serializer seems not to flush it.
             */
