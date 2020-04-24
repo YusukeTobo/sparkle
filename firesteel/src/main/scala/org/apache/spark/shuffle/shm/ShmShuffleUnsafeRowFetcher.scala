@@ -10,6 +10,7 @@ import java.util.ArrayList
 import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
+import org.apache.spark.executor.TempShuffleReadMetrics
 
 import com.hp.hpl.firesteel.shuffle.ShuffleDataModel.ReduceStatus
 import com.hp.hpl.firesteel.shuffle.ReduceSHMShuffleStore
@@ -18,10 +19,8 @@ import com.hp.hpl.firesteel.shuffle.ShuffleDataModel
 private[spark] class ShmShuffleUnsafeRowFetcher(
   context: TaskContext,
   statuses: Seq[(BlockId, Long, Long, Long, Boolean)],
-  reduceShuffleStore: ReduceSHMShuffleStore) {
-
-  private val shuffleMetrics =
-    context.taskMetrics().createTempShuffleReadMetrics()
+  reduceShuffleStore: ReduceSHMShuffleStore,
+  metrics: TempShuffleReadMetrics) {
 
   val mapIds = new ArrayBuffer[Int]()
   val shmRegionIds = new ArrayBuffer[Long]()

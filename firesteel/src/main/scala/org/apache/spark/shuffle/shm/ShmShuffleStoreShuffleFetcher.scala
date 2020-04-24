@@ -27,6 +27,7 @@ import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.util.Utils
 import org.apache.spark.{MapOutputTracker, MapOutputTrackerMaster}
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 
 import com.hp.hpl.firesteel.shuffle.ReduceSHMShuffleStore
 
@@ -81,7 +82,7 @@ private[spark] object ShmShuffleStoreShuffleFetcher extends Logging {
 
     val blockFetcherItr = if (reduceShuffleStore.isUnsafeRow) {
       new ShmShuffleUnsafeRowFetcher(
-        context, statuses, reduceShuffleStore
+        context, statuses, reduceShuffleStore, readMetrics
       ).toIterator
     } else if (aggregation) {
       new ShmShuffleFetcherKeyValuesIterator(
@@ -103,6 +104,12 @@ private[spark] object ShmShuffleStoreShuffleFetcher extends Logging {
             record._2.asInstanceOf[Seq[Any]].length)
         } else {
           readMetrics.incRecordsRead(1)
+
+          if (record._2.isInstanceOf[UnsafeRow]) {
+            val row = record._2.asInstanceOf[UnsafeRow]
+            // read from [(Int, UnsafeRow)]:[Byte]
+            readMetrics.incLocalBytesRead(Integer.BYTES + row.getSizeInBytes)
+          }
         }
         record
       },
