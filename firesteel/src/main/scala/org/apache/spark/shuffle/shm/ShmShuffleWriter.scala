@@ -280,7 +280,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
 
     var partitionLengths = new Array[Int](numberOfPartitions)
     for (id <- partitionedBuffer.keySet.toSeq.sorted) {
-      var firstPos = directBuffer.position
+      var firstPos = directBuffer.position()
 
       var it = partitionedBuffer(id).iterator
       while (it.hasNext) {
@@ -290,7 +290,7 @@ private[spark] class ShmShuffleWriter[K, V]( shuffleStoreMgr:ShuffleStoreManager
         directBuffer.put(serializerInstance.serialize(value))
       }
 
-      partitionLengths(id) = directBuffer.position - firstPos
+      partitionLengths(id) = directBuffer.position() - firstPos
     }
 
     val mapStatus = mapShuffleStore.writeToHeap(directBuffer, partitionLengths)

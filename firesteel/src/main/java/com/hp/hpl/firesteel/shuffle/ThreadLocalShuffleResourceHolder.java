@@ -17,7 +17,7 @@
 package com.hp.hpl.firesteel.shuffle;
 
 import java.nio.ByteBuffer;
-import sun.misc.Cleaner;
+//import sun.misc.Cleaner;
 import java.lang.reflect.Field;
 
 import org.slf4j.Logger;
@@ -57,10 +57,12 @@ public class ThreadLocalShuffleResourceHolder {
         public void freeResource() {
             try {
                 if ( (buffer != null) && (buffer.isDirect())) {
+                    /*
                     Field cleanerField = buffer.getClass().getDeclaredField("cleaner");
                     cleanerField.setAccessible(true);
                     Cleaner cleaner = (Cleaner) cleanerField.get(buffer);
                     cleaner.clean();
+                    */
                 }
             }
             catch (Exception ex) {
